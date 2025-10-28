@@ -1,5 +1,5 @@
 
-![Logo](https://cwebframework.com/assets/logo.gif)
+![Logo](https://cwebframework.com/assets/cweb.gif)
 
 
 
