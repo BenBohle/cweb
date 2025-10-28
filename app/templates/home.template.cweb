@@ -1,0 +1,284 @@
+<%header
+// Page data structure for the example template
+typedef struct {
+    const char *page_title;
+    const char *username;
+    time_t generated_time;
+    const char **menu_items;
+    size_t menu_count;
+    bool is_admin;
+    int user_score;
+    const char *status_message;
+} page_data_t;
+
+// Function declaration
+char* home_template(page_data_t *data);
+%>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="assets/favicon.ico" type="image/x-icon">
+    <title>{data->page_title:string}</title>
+    <cstyle>
+		<% if (data->is_admin) { %>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+		<% } else { %>
+			body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #66eab5 0%, #a24b76 100%);
+            min-height: 100vh;
+        	}
+		<% } %>
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .header { 
+            border-bottom: 3px solid #667eea; 
+            padding-bottom: 20px; 
+            margin-bottom: 30px; 
+            text-align: center;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 11px;
+        }
+        .user-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .nav { 
+            margin: 30px 0; 
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .nav h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .nav ul { 
+            list-style: none; 
+            padding: 0; 
+            display: flex; 
+            gap: 15px; 
+            flex-wrap: wrap;
+        }
+        .nav li { 
+            background: linear-gradient(45deg, #667eea, #764ba2); 
+            color: white; 
+            padding: 12px 20px; 
+            border-radius: 25px; 
+            font-weight: 500;
+            transition: transform 0.2s;
+        }
+        .nav li:hover {
+            transform: translateY(-2px);
+        }
+        .content { 
+            line-height: 1.8; 
+            color: #444;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .feature-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+        }
+        .stats {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .footer { 
+            margin-top: 40px; 
+            padding-top: 20px; 
+            border-top: 2px solid #e9ecef; 
+            color: #666; 
+            font-size: 0.9em; 
+            text-align: center;
+        }
+        .admin-badge { 
+            background: linear-gradient(45deg, #dc3545, #fd7e14); 
+            color: white; 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            font-size: 0.8em; 
+            font-weight: bold;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+    </cstyle>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>{data->page_title:string}</h1>
+            <div class="user-info">
+                <p><strong>Welcome, {data->username:string}!</strong>
+                <% if (data->is_admin) { %>
+                    <span class="admin-badge">ADMINISTRATOR</span>
+                <% } %>
+                </p>
+                <p><strong>User Score:</strong> {data->user_score:int} points</p>
+                <p><strong>Generated:</strong> {data->generated_time:time}</p>
+            </div>
+        </header>
+
+        <% if (data->status_message) { %>
+        <div class="status success">
+            <strong>Status:</strong> {data->status_message}
+        </div>
+        <% } %>
+
+        <nav class="nav">
+            <h3>Navigation Menu ({data->menu_count:size_t} items)</h3>
+            <ul>
+            <% 
+                for (size_t i = 0; i < data->menu_count; i++) {
+                    cweb_output_raw("<li>");
+                    cweb_output_html(data->menu_items[i]);
+                    cweb_output_raw("</li>");
+                }
+            %>
+            </ul>
+        </nav>
+
+		<img src="assets/cats/yummy.png" width="250" height="400" loading="lazy">Cat1</img>
+
+
+		<nav class="nav">
+            <h3>2. Way Navigation Menu ({data->menu_count:size_t} items)</h3>
+			<ul>
+			<% for (int i = 1; i <= 5; i++) { %>
+				<li>Item # {i:int} - Generated dynamically</li>
+			<% } %>	
+            </ul>
+        </nav>
+
+		<nav class="nav">
+            <h3>3. Way Navigation Menu ({data->menu_count:size_t} items)</h3>
+			<ul>
+				<cloop var="item" array="data->menu_items" count="data->menu_count">
+					<li>{item:string}</li>
+				</cloop>
+            </ul>
+        </nav>
+
+        <main class="content">
+            <h2>🚀 Welcome to CWeb Template Engine</h2>
+            <p>This is a demonstration of the CWeb template engine with developer-friendly variable interpolation. 
+            You can use <code>{data->user_score:int}</code> syntax directly in your HTML!</p>
+            
+            <div class="stats">
+                <h3>Template Statistics</h3>
+                <p><strong>User:</strong> {data->username} | <strong>Admin:</strong> {data->is_admin:bool} | <strong>Score:</strong> {data->user_score:int}</p>
+            </div>
+
+			<cif condition="data->is_admin">
+                <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h4>🔧 Cif Admin Panel</h4>
+                    <p>You have administrator privileges!</p>
+                    <p><strong>Current user score:</strong> {data->user_score:int} points</p>
+                </div>
+            <celse>
+                <div style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h4>👤 User Panel</h4>
+                    <p>Welcome regular user! Your score is {data->user_score:int} points.</p>
+                </div>
+            </cif>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>✅ Type-Safe Templates</h4>
+                    <p>Header-defined data structures ensure compile-time type safety and better IDE support.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>🔒 Automatic HTML Escaping</h4>
+                    <p>Variables are automatically escaped to prevent XSS attacks while maintaining security.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>⚡ High Performance</h4>
+                    <p>Templates are compiled to optimized C code for maximum runtime performance.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <h4>🛠️ Developer Friendly</h4>
+                    <p>Simple <code>{data->user_score:int}</code> syntax makes templates easy to read and maintain.</p>
+                </div>
+            </div>
+
+            <h3>🎯 Advanced Features</h3>
+            <ul>
+                <li><strong>Smart Type Detection:</strong> Automatically handles strings, integers, booleans, and time values</li>
+                <li><strong>Memory Safe:</strong> Built-in memory management prevents leaks and buffer overflows</li>
+                <li><strong>Embedded C Code:</strong> Full C code support with <code>&lt;% %&gt;</code> blocks</li>
+                <li><strong>Security First:</strong> Input validation and sanitization built-in</li>
+            </ul>
+
+            <% if (data->is_admin) { %>
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h4>🔧 Admin Panel</h4>
+                <p>You have administrator privileges. You can access advanced features and system settings.</p>
+                <p><strong>Current user score:</strong> {data->user_score:int} points</p>
+            </div>
+            <% } %>
+        </main>
+
+		
+		<div>
+			<h4>📊 html sanitation check</h4>
+			<p>standard: {data->status_message:string}</p>
+			<p>html type: {data->status_message:html}</p>
+		</div>
+		
+
+        <footer class="footer">
+            <p><strong>Generated by CWeb Template Engine</strong></p>
+            <p>Compiled at: {data->generated_time:time}</p>
+            <p>User: {data->username:string} | Menu Items: {data->menu_count:size_t} | Admin: {data->is_admin:bool}</p>
+        </footer>
+    </div>
+</body>
+</html>

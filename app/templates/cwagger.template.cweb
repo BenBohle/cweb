@@ -1,0 +1,376 @@
+<%header
+// Page data structure for the example template
+#include <cweb/cwagger.h>
+
+char* cwagger_template(cwagger_endpoint *data, size_t count);
+%>
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>API Docs Modern</title>
+  <cstyle setinline>
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 24px;
+    max-width: 1200px;
+    margin: 32px auto;
+    padding: 0 16px;
+  }
+  .sidebar {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    background: #ffffff;
+    border: 1px solid #e2e8ec;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(30,61,136,0.06);
+    padding: 16px;
+  }
+  .ins-section h2 {
+    margin: 0 0 12px 0;
+    font-size: 1.1rem;
+    color: #27466f;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+  }
+  .kv span { color: #556581; }
+  .kv code {
+    background: #f6f8fb;
+    border: 1px solid #e2e8ec;
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: #2d3e50;
+    word-break: break-all;
+  }
+  .sidebar details {
+    margin-top: 8px;
+    border-top: 1px dashed #e2e8ec;
+    padding-top: 8px;
+  }
+  .sidebar summary {
+    cursor: pointer;
+    color: #2b5aa7;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .sidebar pre {
+    background: #0b1220;
+    color: #dfe7ff;
+    border-radius: 8px;
+    padding: 10px;
+    font-family: "Fira Mono","Roboto Mono","Consolas",monospace;
+    font-size: 0.9rem;
+    max-height: 280px;
+    overflow: auto;
+    margin: 6px 0 0 0;
+  }
+
+  body {
+    background: #f7f9fb;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #2d3e50;
+    margin: 0;
+    padding: 0;
+  }
+  main {
+    max-width: 800px;
+    margin: 0;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 4px 32px rgba(30,61,136,0.07);
+    border-radius: 18px;
+  }
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 32px;
+    text-align: center;
+  }
+  .api-endpoint {
+    margin-bottom: 30px;
+    border: 1px solid #e2e8ec;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .endpoint-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px;
+    background: #f1f5fc;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .endpoint-summary:hover { background: #e5eaf6; }
+  .method {
+    font-weight: bold;
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 1rem;
+    text-transform: uppercase;
+  }
+  .method.get { background: #d2fadd; color: #21996f; }
+  .method.post { background: #ffe4be; color: #e29326; }
+  .method.put { background: #fdf4dc; color: #a08a00; }
+  .method.delete { background: #ffd8da; color: #b80009; }
+  .url {
+    font-family: "Fira Mono", monospace;
+    color: #3363a0;
+    margin-left: 12px;
+  }
+  .short-desc { flex: 1; padding-left: 16px; color: #616e88; }
+  .expand-icon { font-size: 1.2rem; transition: transform 0.2s; }
+  .api-endpoint.open .expand-icon { transform: rotate(180deg); }
+  .endpoint-details {
+    display: none;
+    padding: 18px 24px;
+    background: #fbfdff;
+    font-size: 1rem;
+    border-top: 1px solid #e2e8ec;
+  }
+  .api-endpoint.open .endpoint-details { display: block; }
+  .long-desc { color: #46526d; margin-bottom: 16px; }
+  .req-resp-switch { margin-bottom: 16px; }
+  .req-resp-switch button {
+    background: #f1f5fc;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 5px;
+    margin-right: 5px;
+    font-size: 0.98rem;
+    cursor: pointer;
+    color: #3363a0;
+    transition: background 0.2s;
+    outline: none;
+  }
+  .req-resp-switch button.active { background: #3363a0; color: #fff; font-weight: bold; }
+  .example-area {
+    background: #fafbfc;
+    border-radius: 8px;
+    box-shadow: 0 2px 16px rgba(51,99,160,0.04);
+    padding: 12px;
+  }
+  pre.example {
+    font-family: "Fira Mono","Roboto Mono","Consolas",monospace;
+    font-size: 0.97rem;
+    margin: 0;
+    color: #394864;
+    background: none;
+  }
+  </cstyle>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="inspector">
+      <section class="ins-section">
+        <h2>Live Request</h2>
+        <div class="kv"><span>Methode</span><code id="ins-method">-</code></div>
+        <div class="kv"><span>URL</span><code id="ins-url">-</code></div>
+        <div class="kv"><span>Status</span><code id="ins-status">-</code></div>
+        <div class="kv"><span>Dauer</span><code id="ins-duration">-</code></div>
+        <details open><summary>Request Headers</summary><pre id="ins-req-headers"></pre></details>
+        <details open><summary>Request Body</summary><pre id="ins-req-body"></pre></details>
+        <details open><summary>Response Headers</summary><pre id="ins-resp-headers"></pre></details>
+        <details open><summary>Response Body</summary><pre id="ins-resp-body"></pre></details>
+      </section>
+    </aside>
+
+    <main>
+      <h1>API Dokumentation</h1>
+      <%  for (int i = 0; i < count; i++) {
+        cwagger_endpoint *current = &data[i];
+      %>
+      <section class="api-endpoint">
+        <div class="endpoint-summary" onclick="toggleEndpoint(this)">
+          <span class="method get">{current->method:string}</span>
+          <span class="url">{current->path:string}</span>
+          <span class="short-desc">{current->short_description:string}</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="endpoint-details">
+          <p class="long-desc">{current->short_description:string}</p>
+          <!-- onsubmit entfernt, stattdessen data-path und JS-Handler -->
+          <form class="test-request-form" data-path="{current->path:string}">
+            <label for="method-{i:int}">HTTP-Methode:</label>
+            <select name="method" id="method-{i:int}">
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+
+            <label for="body-{i:int}">Request Body:</label>
+            <textarea name="body" id="body-{i:int}" rows="6" style="width:100%;">{current->detail.request_schema:string}</textarea>
+            <button type="submit" style="margin-top:10px;">Test Request senden</button>
+          </form>
+
+          <div class="req-resp-switch">
+            <button class="req-btn active" onclick="switchExample(this,'request')">Request</button>
+            <button class="resp-btn" onclick="switchExample(this,'response')">Response</button>
+          </div>
+          <div class="test-response" style="margin-top:12px; background:#f1f5fc; border-radius:6px; padding:10px; display:none;"></div>
+
+          <div class="example-area">
+            <pre class="example req-example">
+{current->detail.request_schema:string}
+{current->detail.expected_arguments:string}
+            </pre>
+            <pre class="example resp-example" style="display:none;">
+{current->detail.response_schema:string}
+            </pre>
+          </div>
+        </div>
+      </section>
+      <% } %>
+    </main>
+  </div>
+  <script>
+  function toggleEndpoint(el) {
+    const section = el.closest('.api-endpoint');
+    // Alle anderen Endpunkte schließen
+    document.querySelectorAll('.api-endpoint.open').forEach(function(other) {
+        if (other !== section) {
+            other.classList.remove('open');
+        }
+    });
+    // Aktuellen Endpunkt toggeln
+    section.classList.toggle('open');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.resp-example').forEach(function(pre) {
+        // Whitespace und Zeilenumbrüche entfernen
+        const raw = pre.textContent.trim();
+        try {
+            const obj = JSON.parse(raw);
+            pre.textContent = JSON.stringify(obj, null, 2);
+        } catch (e) {
+            // Kein valides JSON, nichts tun
+        }
+    });
+
+    // Submit-Handler für alle Test-Formulare binden (verhindert Redirect/Neuer Tab)
+    document.querySelectorAll('.test-request-form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const path = form.dataset.path || '';
+            sendTestRequest(form, path);
+        });
+    });
+});
+
+// Umschalten zwischen Request und Response Beispiel
+function switchExample(btn, type) {
+	const parent = btn.closest('.endpoint-details');
+	const reqBtn = parent.querySelector('.req-btn');
+	const respBtn = parent.querySelector('.resp-btn');
+	const reqExample = parent.querySelector('.req-example');
+	const respExample = parent.querySelector('.resp-example');
+  
+	if (type === 'request') {
+	  reqBtn.classList.add('active');
+	  respBtn.classList.remove('active');
+	  reqExample.style.display = 'block';
+	  respExample.style.display = 'none';
+	} else {
+	  reqBtn.classList.remove('active');
+	  respBtn.classList.add('active');
+	  reqExample.style.display = 'none';
+	  respExample.style.display = 'block';
+	}
+}
+
+// Hilfen für Inspector
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text != null ? String(text) : '';
+}
+function setPre(id, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!text) { el.textContent = ''; return; }
+    try {
+        const obj = JSON.parse(text);
+        el.textContent = JSON.stringify(obj, null, 2);
+    } catch (_) {
+        el.textContent = text;
+    }
+}
+function headersToString(headers) {
+    const lines = [];
+    // Response.headers ist iterable
+    try {
+        headers.forEach((v, k) => lines.push(`${k}: ${v}`));
+    } catch (e) {
+        // Fallback, falls kein Headers-Objekt
+        if (headers && typeof headers === 'object') {
+            Object.keys(headers).forEach(k => lines.push(`${k}: ${headers[k]}`));
+        }
+    }
+    return lines.join('\n');
+}
+
+function sendTestRequest(form, path) {
+    const method = (form.method.value || 'GET').toUpperCase();
+    const body = form.body.value || '';
+    const responseDiv = form.parentNode.querySelector('.test-response');
+    responseDiv.style.display = 'block';
+    responseDiv.textContent = 'Request wird gesendet...';
+
+    // Für GET/DELETE keinen Body mitschicken
+    const headers = { 'Content-Type': 'application/json' };
+    const fetchOptions = { method, headers };
+    if (method !== 'GET' && method !== 'DELETE') {
+        fetchOptions.body = body;
+    }
+
+    // Inspector: Request anzeigen
+    setText('ins-method', method);
+    setText('ins-url', path);
+    setPre('ins-req-body', body);
+    setPre('ins-req-headers', headersToString(headers));
+
+    const started = performance.now();
+
+    fetch(path, fetchOptions)
+        .then(async resp => {
+            const duration = Math.max(0, performance.now() - started).toFixed(0) + ' ms';
+            const text = await resp.text();
+
+            // Inspector: Response anzeigen
+            setText('ins-status', `${resp.status} ${resp.statusText || ''}`.trim());
+            setText('ins-duration', duration);
+            setPre('ins-resp-headers', headersToString(resp.headers));
+            setPre('ins-resp-body', text);
+
+            // Rechte Seite (unter Endpoint) zusammenfassen
+            let formatted;
+            try {
+                formatted = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {
+                formatted = text;
+            }
+            responseDiv.textContent = `Status: ${resp.status}\nDauer: ${duration}\n\n${formatted}`;
+        })
+        .catch(err => {
+            setText('ins-status', 'Fehler');
+            setText('ins-duration', '-');
+            setPre('ins-resp-headers', '');
+            setPre('ins-resp-body', String(err));
+            responseDiv.textContent = 'Fehler beim Senden des Requests: ' + err;
+        });
+
+    return false; // zusätzliche Absicherung
+}
+  </script>
+</body>
+</html>

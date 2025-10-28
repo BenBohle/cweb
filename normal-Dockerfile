@@ -1,0 +1,15 @@
+FROM ubuntu:latest
+RUN apt-get update && \
+    apt-get install -y \
+    g++ \
+    valgrind \
+    make \
+    libc-dev \
+    libreadline-dev \
+    libevent-dev \
+    curl \
+    libcurl4-openssl-dev \
+    libcjson-dev \
+    libmariadb-dev
+
+EXPOSE 8080

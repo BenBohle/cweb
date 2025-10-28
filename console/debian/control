@@ -1,0 +1,15 @@
+Source: cweb-cli
+Section: devel
+Priority: optional
+Maintainer: Ben Bohle <dev@cweb.dev>
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.16), pkg-config, libcweb-dev (>= 1.0.0)
+Standards-Version: 4.6.2
+Homepage: https://github.com/BenBohle/cweb_dev
+Rules-Requires-Root: no
+
+Package: cweb-cli
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libcweb-dev (>= 1.0.0)
+Description: Command line tooling for the cweb framework
+ The cweb CLI compiles templates, scaffolds components, and manages
+ cweb projects. It relies on the libcweb developer package at runtime.

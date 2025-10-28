@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/cwebTargets.cmake")
+
+set_and_check(CWEB_INCLUDE_DIR "@PACKAGE_CWEB_INSTALL_INCLUDEDIR@")
+set(CWEB_LIBRARIES cweb::cweb)
+set(CWEB_VERSION "@PROJECT_VERSION@")

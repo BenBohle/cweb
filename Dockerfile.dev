@@ -1,0 +1,29 @@
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y g++ valgrind make libc-dev libreadline-dev libevent-dev curl \
+    libcurl4-openssl-dev libcjson-dev \
+     libmariadb3 libmariadb-dev \
+    dnsutils \
+    iputils-ping \
+    telnet \
+	brotli libbrotli-dev \
+	zlib1g-dev
+
+# ENV MYSQL_HOST=db5018644544.hosting-data.io
+# ENV MYSQL_USER=dbu1692583
+# ENV MYSQL_PASSWORD=!Test123456789!
+# ENV MYSQL_DATABASE=dbs14776729
+# ENV MYSQL_PORT=3306
+# ENV MYSQL_POOL_SIZE=4
+# ENV MYSQL_QUEUE_LIMIT=8
+
+RUN mkdir -p /workspace && chmod 755 /workspace
+
+# ENV MYSQL_HOST=test-mariadb
+# ENV MYSQL_USER=cweb
+# ENV MYSQL_PASSWORD=cweb
+# ENV MYSQL_DATABASE=cweb_dev
+# ENV MYSQL_PORT=3306
+
+EXPOSE 8080
+
+CMD ["bash", "-c", "chmod +x console 2>/dev/null || true; exec bash"]

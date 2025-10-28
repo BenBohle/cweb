@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - MYSQL_HOST=mariadb
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root
+      - MYSQL_DATABASE=cweb_dev
+      - MYSQL_PORT=3306
+      - MYSQL_POOL_SIZE=4
+      - CWEB_ENV=development
+    depends_on:
+      - mariadb
+    networks:
+      - cweb-network
+    volumes:
+      - .:/workspace
+      # Exclude build directory from volume mount to avoid permission issues
+      - /workspace/build
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  mariadb:
+    image: mariadb:10.11
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=cweb_dev
+      - MYSQL_USER=cweb
+      - MYSQL_PASSWORD=cweb123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - cweb-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+
+volumes:
+  mariadb_data:
+
+networks:
+  cweb-network:
+    driver: bridge
