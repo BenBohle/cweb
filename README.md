@@ -22,6 +22,8 @@ Install framework
 Install cweb cli
 
 ```bash
+  curl -1sLf 'https://dl.cloudsmith.io/public/cweb/cweb-cli/setup.deb.sh' | sudo -E bash
+
   sudo apt install cweb-cli
 ```
     
@@ -29,7 +31,7 @@ Install cweb cli
 
 [Documentation](https://cwebframework.com)
 
-[Contribution Guide](https://cwebframework.com)
+[Contribution Guide](CONTRIBUTOR_INSTALL.md)
 
 
 ## Related

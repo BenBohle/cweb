@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
         port = argv[1];
     }
 
-    cweb_set_mode(CWEB_MODE_DEV);
+    cweb_set_mode(CWEB_MODE_PROD);
 
     // Init Cbase FileCache
     if (cweb_default_fileserver_config(FILESERVER_MODE_HYBRID, 1000 * 1024 * 1024, true) != 0) {
