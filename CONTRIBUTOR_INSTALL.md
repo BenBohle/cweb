@@ -116,3 +116,10 @@ sudo apt remove libcweb-dev cweb-cli
 ```
 
 ---
+
+
+third-party libs used:
+- libevent (https://github.com/libevent/libeventg) - BSD license
+- Brotli (https://github.com/google/brotli) - MIT license
+- Gzip (https://zlib.net/) - zlib license
+- cJSON (https://github.com/DaveGamble/cJSON) - MIT license

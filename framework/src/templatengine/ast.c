@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright 2025 Ben Bohle
+ * Licensed under the Apache License, Version 2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <cweb/codegen.h>
 
 ast_node_t* cweb_ast_node_create(ast_node_type_t type) {
