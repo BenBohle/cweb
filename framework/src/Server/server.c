@@ -9,7 +9,6 @@
 #include <cweb/fileserver.h>
 #include <cweb/compress.h>
 #include <cweb/speedbench.h>
-#include "../../app/includes/cstyles.h"
 #include <cweb/leak_detector.h>
 
 // Forward declarations (Prototypen) für die Callbacks
