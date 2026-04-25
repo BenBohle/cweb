@@ -24,6 +24,12 @@
 #include <event2/listener.h>
 #include <event2/buffer.h>
 
+#define RESET "\033[0m"
+#define fg_green "\033[32m"
+#define fg_cyan "\033[36m"
+#define underline "\033[4m"
+#define vconnection "〄"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
