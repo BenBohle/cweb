@@ -1,0 +1,186 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and package cweb CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libevent-dev libcurl4-openssl-dev libbrotli-dev zlib1g-dev \
+            libcjson-dev libssl-dev ruby ruby-dev rubygems rpm
+          sudo gem install --no-document fpm
+
+      - name: Build and install libcweb
+        run: |
+          cmake -S framework -B framework/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build framework/build --parallel
+          sudo cmake --install framework/build
+
+      - name: Configure cweb CLI
+        run: |
+          cmake -S console -B console/build -DCMAKE_BUILD_TYPE=Release -DCWEB_CLI_USE_LOCAL_FRAMEWORK=OFF
+
+      - name: Build cweb CLI
+        run: cmake --build console/build --parallel
+
+      - name: Package .deb with CPack
+        run: |
+          cmake --build console/build --target package
+          ls -R console/build
+
+      - name: Read CLI package version
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("console/CMakeLists.txt").read_text(encoding="utf-8")
+          match = re.search(r"project\s*\(\s*cweb_cli\s+VERSION\s+([0-9A-Za-z.+_~-]+)", text, re.S)
+          if not match:
+              raise SystemExit("Could not read CLI version from CMakeLists.txt")
+          print(match.group(1))
+          PY
+          )"
+          echo "PACKAGE_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Package .rpm
+        run: |
+          set -euo pipefail
+          rm -rf console/pkgroot console/packages
+          mkdir -p console/packages
+          DESTDIR="${PWD}/console/pkgroot" cmake --install console/build --prefix /usr
+
+          fpm -s dir -t rpm -C console/pkgroot -p "console/packages/cweb-cli-${PACKAGE_VERSION}-1.rpm" \
+            -n cweb-cli -v "${PACKAGE_VERSION}" --iteration 1 --architecture native \
+            --license MIT --vendor "Ben Bohle" --maintainer "Ben Bohle <kontakt@benbohle.de>" \
+            --url "https://github.com/BenBohle/cweb" \
+            --description "Command line interface for the cweb framework" \
+            --depends "libcweb-dev >= 0.3.0" \
+            usr
+
+      - name: Package .apk on Alpine
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e PACKAGE_VERSION="${PACKAGE_VERSION}" \
+            -v "${PWD}:/work" \
+            -w /work \
+            alpine:3.20 \
+            sh -euxc '
+              apk add --no-cache build-base cmake pkgconfig \
+                libevent-dev curl-dev brotli-dev zlib-dev cjson-dev \
+                ruby ruby-dev tar gzip
+              gem install --no-document fpm
+              cmake -S framework -B framework/build-alpine-cli -DCMAKE_BUILD_TYPE=Release
+              cmake --build framework/build-alpine-cli --parallel
+              cmake --install framework/build-alpine-cli --prefix /usr
+              cmake -S console -B console/build-alpine -DCMAKE_BUILD_TYPE=Release -DCWEB_CLI_USE_LOCAL_FRAMEWORK=OFF
+              cmake --build console/build-alpine --parallel
+              rm -rf console/pkgroot-alpine
+              DESTDIR=/work/console/pkgroot-alpine cmake --install console/build-alpine --prefix /usr
+              fpm -s dir -t apk -C console/pkgroot-alpine -p "console/packages/cweb-cli-${PACKAGE_VERSION}.apk" \
+                -n cweb-cli -v "${PACKAGE_VERSION}" --iteration 1 --architecture native \
+                --license MIT --vendor "Ben Bohle" --maintainer "Ben Bohle <kontakt@benbohle.de>" \
+                --url "https://github.com/BenBohle/cweb" \
+                --description "Command line interface for the cweb framework" \
+                --depends "libcweb-dev>=0.3.0" \
+                usr
+            '
+          ls -la console/packages
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cweb-cli-${{ github.ref_name }}
+          path: |
+            console/build/*.deb
+            console/packages/*.rpm
+            console/packages/*.apk
+
+      - name: Attach packages to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            console/build/*.deb
+            console/packages/*.rpm
+            console/packages/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify archive webhook
+        if: startsWith(github.ref, 'refs/tags/') && vars.ARCHIVE_WEBHOOK_ENABLED == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARCHIVE_WEBHOOK_URL: ${{ secrets.ARCHIVE_WEBHOOK_URL }}
+          ARCHIVE_WEBHOOK_SECRET: ${{ secrets.ARCHIVE_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "${ARCHIVE_WEBHOOK_URL}"
+          test -n "${ARCHIVE_WEBHOOK_SECRET}"
+
+          release_json="$(mktemp)"
+          payload_json="$(mktemp)"
+
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" \
+            > "${release_json}"
+
+          python3 - "${release_json}" "${payload_json}" <<'PY'
+          import json
+          import os
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as fh:
+              release = json.load(fh)
+
+          payload = {
+              "action": "published",
+              "repository": {"full_name": os.environ["GITHUB_REPOSITORY"]},
+              "release": release,
+          }
+
+          with open(sys.argv[2], "w", encoding="utf-8") as fh:
+              json.dump(payload, fh, separators=(",", ":"))
+          PY
+
+          signature="$(python3 - "${payload_json}" <<'PY'
+          import hashlib
+          import hmac
+          import os
+          import sys
+
+          with open(sys.argv[1], "rb") as fh:
+              body = fh.read()
+
+          digest = hmac.new(os.environ["ARCHIVE_WEBHOOK_SECRET"].encode("utf-8"), body, hashlib.sha256).hexdigest()
+          print(f"sha256={digest}")
+          PY
+          )"
+
+          curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: release" \
+            -H "X-Hub-Signature-256: ${signature}" \
+            --data-binary "@${payload_json}" \
+            "${ARCHIVE_WEBHOOK_URL}"
