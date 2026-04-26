@@ -68,18 +68,18 @@ else()
 		-Werror
 		-fstack-protector-strong
 		-fPIC
-		# Release-only optimization flags
-		$<$<CONFIG:Release>:-O3>
-		$<$<CONFIG:Release>:-march=native>
-		$<$<CONFIG:Release>:-flto>
+		# Release builds must stay CPU-portable for binary packages.
+		$<$<CONFIG:Release>:-O2>
+		$<$<CONFIG:Release>:-march=x86-64>
+		$<$<CONFIG:Release>:-mtune=generic>
 	)
 	target_compile_definitions(cweb PRIVATE _FORTIFY_SOURCE=2)
 endif()
 
-# Define NDEBUG in Release config and enable IPO/LTO when supported
+# Define NDEBUG in Release config. Keep IPO/LTO disabled for portable binary packages.
 target_compile_definitions(cweb PRIVATE $<$<CONFIG:Release>:NDEBUG>)
 set_target_properties(cweb PROPERTIES
-	INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
+	INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
 )
 
 if(WIN32)
