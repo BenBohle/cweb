@@ -13,6 +13,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
+
+static const char* find_header_end(const char *raw_request, size_t len) {
+    if (!raw_request || len < 4) return NULL;
+
+    for (size_t i = 0; i + 3 < len; i++) {
+        if (raw_request[i] == '\r' && raw_request[i + 1] == '\n' &&
+            raw_request[i + 2] == '\r' && raw_request[i + 3] == '\n') {
+            return raw_request + i;
+        }
+    }
+
+    return NULL;
+}
+
+static bool parse_content_length_value(const char *value, size_t *out_len) {
+    char *endptr = NULL;
+    unsigned long long parsed = 0;
+
+    if (!value || !out_len) return false;
+
+    while (isspace((unsigned char)*value)) value++;
+    if (*value == '\0') return false;
+
+    errno = 0;
+    parsed = strtoull(value, &endptr, 10);
+    if (errno != 0 || endptr == value) return false;
+
+    while (isspace((unsigned char)*endptr)) endptr++;
+    if (*endptr != '\0') return false;
+
+    *out_len = (size_t)parsed;
+    return true;
+}
 
 
 
@@ -29,7 +63,7 @@ void cweb_free_http_request(Request *req) {
         }
     }
     if (req->body) {
-        cweb_leak_tracker_record("req.body", req->body, 0, false);
+        cweb_leak_tracker_record("req.body", req->body, req->body_len + 1, false);
         free(req->body);
     }
     if (req->session_id) {
@@ -79,20 +113,42 @@ static char* get_cookie_value(Request *req, const char* cookie_name) {
 
 Request* cweb_parse_request(const char *raw_request, size_t len) {
     Request *req = calloc(1, sizeof(Request));
+    const char *header_end = NULL;
+    size_t header_len = 0;
+    size_t body_available = 0;
+    size_t expected_body_len = 0;
+    char *buffer = NULL;
+    char *saveptr = NULL;
+    char *line = NULL;
+
     if (!req) return NULL;
     cweb_leak_tracker_record("Request", req, sizeof(*req), true);
 
-    char *buffer = strndup(raw_request, len);
-    if (buffer) cweb_leak_tracker_record("request.buffer", buffer, len + 1, true);
+    header_end = find_header_end(raw_request, len);
+    if (!header_end) {
+        cweb_free_http_request(req);
+        return NULL;
+    }
+
+    header_len = (size_t)(header_end - raw_request);
+    body_available = len - (header_len + 4);
+
+    buffer = malloc(header_len + 1);
+    if (buffer) cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, true);
+    if (!buffer) {
+        cweb_free_http_request(req);
+        return NULL;
+    }
+    memcpy(buffer, raw_request, header_len);
+    buffer[header_len] = '\0';
 
 	// TODO: check unused code
     // AUTOFREE char *buffer_to_free = buffer;
 
-    char *saveptr;
-    char *line = strtok_r(buffer, "\r\n", &saveptr);
+    line = strtok_r(buffer, "\r\n", &saveptr);
     if (!line) { 
 
-        if (buffer) { cweb_leak_tracker_record("request.buffer", buffer, len + 1, false);
+        if (buffer) { cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
             free(buffer); 
         }
         cweb_free_http_request(req); 
@@ -119,16 +175,43 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
             req->headers[req->header_count].value = strdup(value);
             if (req->headers[req->header_count].value)
                 cweb_leak_tracker_record("req.header.value", req->headers[req->header_count].value, strlen(req->headers[req->header_count].value) + 1, true);
+
+            if (strcasecmp(key, "Content-Length") == 0) {
+                parse_content_length_value(value, &expected_body_len);
+            }
+
             req->header_count++;
         }
+    }
+
+    if (expected_body_len > body_available) {
+        cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
+        free(buffer);
+        cweb_free_http_request(req);
+        return NULL;
+    }
+
+    if (expected_body_len > 0) {
+        req->body = malloc(expected_body_len + 1);
+        if (!req->body) {
+            cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
+            free(buffer);
+            cweb_free_http_request(req);
+            return NULL;
+        }
+
+        memcpy(req->body, header_end + 4, expected_body_len);
+        req->body[expected_body_len] = '\0';
+        req->body_len = expected_body_len;
+        cweb_leak_tracker_record("req.body", req->body, req->body_len + 1, true);
     }
     
     req->session_id = get_cookie_value(req, "session_id");
 	LOG_DEBUG("HTTP", "Extracted session_id from cookie: %s", req->session_id ? req->session_id : "NULL");
 
-	LOG_DEBUG("Parse request end", "Request method: %s, path: %s, version: %s", req->method, req->path, req->version);
+	LOG_DEBUG("Parse request end", "Request method: %s, path: %s, version: %s, body_len: %zu", req->method, req->path, req->version, req->body_len);
 
-    if (buffer) { cweb_leak_tracker_record("request.buffer", buffer, len + 1, false);
+    if (buffer) { cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
         free(buffer);
     }
     return req;

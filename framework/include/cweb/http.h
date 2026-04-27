@@ -40,6 +40,7 @@ typedef struct {
     Header headers[MAX_HEADERS];
     int header_count;
     char *body;
+    size_t body_len;
     char *session_id; // Extracted from cookie
     Session *session; // Associated session object
 	bool using_session;

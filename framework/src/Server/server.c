@@ -10,12 +10,72 @@
 #include <cweb/compress.h>
 #include <cweb/speedbench.h>
 #include <cweb/leak_detector.h>
+#include <ctype.h>
+#include <errno.h>
 
 // Forward declarations (Prototypen) für die Callbacks
 static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
                         struct sockaddr *addr, int socklen, void *ctx);
 static void conn_read_cb(struct bufferevent *bev, void *ctx);
 static void conn_event_cb(struct bufferevent *bev, short events, void *ctx);
+
+static const char *find_header_end_in_buffer(const char *data, size_t len) {
+    if (!data || len < 4) return NULL;
+
+    for (size_t i = 0; i + 3 < len; i++) {
+        if (data[i] == '\r' && data[i + 1] == '\n' &&
+            data[i + 2] == '\r' && data[i + 3] == '\n') {
+            return data + i;
+        }
+    }
+
+    return NULL;
+}
+
+static size_t get_content_length_from_headers(const char *headers, size_t header_len) {
+    size_t offset = 0;
+
+    while (offset < header_len) {
+        const char *line = headers + offset;
+        const char *line_end = NULL;
+        const char content_length_prefix[] = "Content-Length:";
+        size_t prefix_len = sizeof(content_length_prefix) - 1;
+        size_t line_len = 0;
+
+        for (size_t i = offset; i + 1 < header_len; i++) {
+            if (headers[i] == '\r' && headers[i + 1] == '\n') {
+                line_end = headers + i;
+                line_len = (size_t)(line_end - line);
+                break;
+            }
+        }
+
+        if (!line_end) {
+            line_len = header_len - offset;
+        }
+
+        if (line_len >= prefix_len && strncasecmp(line, content_length_prefix, prefix_len) == 0) {
+            const char *value = line + prefix_len;
+            char *endptr = NULL;
+            unsigned long long parsed = 0;
+
+            while (isspace((unsigned char)*value)) value++;
+            errno = 0;
+            parsed = strtoull(value, &endptr, 10);
+            if (errno == 0 && endptr != value) {
+                while (isspace((unsigned char)*endptr)) endptr++;
+                if ((size_t)(endptr - line) <= line_len) {
+                    return (size_t)parsed;
+                }
+            }
+        }
+
+        if (!line_end) break;
+        offset = (size_t)((line_end - headers) + 2);
+    }
+
+    return 0;
+}
 
 struct event_base *g_event_base = NULL;
 
@@ -107,20 +167,43 @@ static void conn_read_cb(struct bufferevent *bev, void *ctx) {
 
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t len = evbuffer_get_length(input);
+    const char *peek = NULL;
+    const char *header_end = NULL;
+    size_t header_len = 0;
+    size_t body_len = 0;
+    size_t request_len = 0;
     LOG_DEBUG("SERVER", "Received %zu bytes of data", len);
     if (len == 0) return;
 
+    peek = (const char *)evbuffer_pullup(input, (ev_ssize_t)len);
+    if (!peek) return;
+
+    header_end = find_header_end_in_buffer(peek, len);
+    if (!header_end) {
+        LOG_DEBUG("SERVER", "Request headers incomplete, waiting for more data");
+        return;
+    }
+
+    header_len = (size_t)(header_end - peek);
+    body_len = get_content_length_from_headers(peek, header_len);
+    request_len = header_len + 4 + body_len;
+    if (len < request_len) {
+        size_t body_bytes_present = len > (header_len + 4) ? len - (header_len + 4) : 0;
+        LOG_DEBUG("SERVER", "Request body incomplete (%zu/%zu), waiting for more data", body_bytes_present, body_len);
+        return;
+    }
+
     // Read the data from the buffer into a C string
-    AUTOFREE char *data = malloc(len + 1);
+    AUTOFREE char *data = malloc(request_len + 1);
     if (!data) {
         fprintf(stderr, "Memory allocation failed\n");
         return;
     }
-    cweb_leak_tracker_record("server.data", data, len + 1, true);
-    evbuffer_remove(input, data, len);
-    data[len] = '\0';
+    cweb_leak_tracker_record("server.data", data, request_len + 1, true);
+    evbuffer_remove(input, data, request_len);
+    data[request_len] = '\0';
 
-    Request *req = cweb_parse_request(data, len);
+    Request *req = cweb_parse_request(data, request_len);
     if (!req) {
         fprintf(stderr, "Failed to parse request\n");
         return; // Kein Speicher wurde bisher allokiert, daher kein `free` nötig
