@@ -122,12 +122,12 @@ static char* get_cookie_value(Request *req, const char* cookie_name) {
 Request* cweb_parse_request(const char *raw_request, size_t len) {
     Request *req = calloc(1, sizeof(Request));
     const char *header_end = NULL;
-    const char *cursor = NULL;
     size_t header_len = 0;
     size_t body_available = 0;
     size_t expected_body_len = 0;
     size_t separator_len = 0;
     char *buffer = NULL;
+    char *cursor = NULL;
     char *line = NULL;
 
     if (!req) return NULL;
