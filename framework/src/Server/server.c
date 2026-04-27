@@ -45,20 +45,25 @@ static size_t get_content_length_from_headers(const char *headers, size_t header
 
     while (offset < header_len) {
         const char *line = headers + offset;
-        const char *line_end = NULL;
         const char content_length_prefix[] = "Content-Length:";
         size_t prefix_len = sizeof(content_length_prefix) - 1;
         size_t line_len = 0;
+        size_t line_advance = 0;
 
-        for (size_t i = offset; i + 1 < header_len; i++) {
-            if (headers[i] == '\r' && headers[i + 1] == '\n') {
-                line_end = headers + i;
-                line_len = (size_t)(line_end - line);
+        for (size_t i = offset; i < header_len; i++) {
+            if (headers[i] == '\r') {
+                line_len = i - offset;
+                line_advance = (i + 1 < header_len && headers[i + 1] == '\n') ? 2 : 1;
+                break;
+            }
+            if (headers[i] == '\n') {
+                line_len = i - offset;
+                line_advance = 1;
                 break;
             }
         }
 
-        if (!line_end) {
+        if (line_advance == 0) {
             line_len = header_len - offset;
         }
 
@@ -78,8 +83,8 @@ static size_t get_content_length_from_headers(const char *headers, size_t header
             }
         }
 
-        if (!line_end) break;
-        offset = (size_t)((line_end - headers) + 2);
+        if (line_advance == 0) break;
+        offset += line_len + line_advance;
     }
 
     return 0;

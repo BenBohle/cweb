@@ -122,12 +122,12 @@ static char* get_cookie_value(Request *req, const char* cookie_name) {
 Request* cweb_parse_request(const char *raw_request, size_t len) {
     Request *req = calloc(1, sizeof(Request));
     const char *header_end = NULL;
+    const char *cursor = NULL;
     size_t header_len = 0;
     size_t body_available = 0;
     size_t expected_body_len = 0;
     size_t separator_len = 0;
     char *buffer = NULL;
-    char *saveptr = NULL;
     char *line = NULL;
 
     if (!req) return NULL;
@@ -156,43 +156,66 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
 	// TODO: check unused code
     // AUTOFREE char *buffer_to_free = buffer;
 
-    line = strtok_r(buffer, "\r\n", &saveptr);
-    if (!line) { 
+    cursor = buffer;
+    while (*cursor == '\r' || *cursor == '\n') cursor++;
+    line = buffer;
+    line = (char *)cursor;
+    while (*cursor && *cursor != '\r' && *cursor != '\n') cursor++;
+    if (cursor == line) {
+        LOG_DEBUG("HTTP", "Request parse failed: request line missing");
+        cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
+        free(buffer);
+        cweb_free_http_request(req);
+        return NULL;
+    }
+    *cursor = '\0';
 
-        if (buffer) { cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
-            free(buffer); 
-        }
-        cweb_free_http_request(req); 
-        return NULL; 
+    if (sscanf(line, "%15s %2047s %15s", req->method, req->path, req->version) != 3) {
+        LOG_DEBUG("HTTP", "Request parse failed: malformed request line '%s'", line);
+        cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
+        free(buffer);
+        cweb_free_http_request(req);
+        return NULL;
     }
 
-    // Parse request line
-    sscanf(line, "%15s %2047s %15s", req->method, req->path, req->version);
+    cursor++;
+    if (*(cursor - 1) == '\r' && *cursor == '\n') cursor++;
 
-    // Parse headers
-    while ((line = strtok_r(NULL, "\r\n", &saveptr))) {
-        if (strlen(line) == 0) break; // End of headers
+    while (*cursor) {
+        char *line_end = cursor;
 
-        char *colon = strchr(line, ':');
-        if (colon && req->header_count < MAX_HEADERS) {
-            *colon = '\0';
-            char *key = line;
-            char *value = colon + 1;
-            while (isspace(*value)) value++; // Trim leading space
+        while (*line_end && *line_end != '\r' && *line_end != '\n') line_end++;
+        if (line_end == cursor) break;
 
-            req->headers[req->header_count].key = strdup(key);
-            if (req->headers[req->header_count].key)
-                cweb_leak_tracker_record("req.header.key", req->headers[req->header_count].key, strlen(req->headers[req->header_count].key) + 1, true);
-            req->headers[req->header_count].value = strdup(value);
-            if (req->headers[req->header_count].value)
-                cweb_leak_tracker_record("req.header.value", req->headers[req->header_count].value, strlen(req->headers[req->header_count].value) + 1, true);
-
-            if (strcasecmp(key, "Content-Length") == 0) {
-                parse_content_length_value(value, &expected_body_len);
-            }
-
-            req->header_count++;
+        if (*line_end) {
+            *line_end = '\0';
         }
+
+        if (req->header_count < MAX_HEADERS) {
+            char *colon = strchr(cursor, ':');
+            if (colon) {
+                char *key = cursor;
+                char *value = colon + 1;
+                *colon = '\0';
+                while (isspace((unsigned char)*value)) value++;
+
+                req->headers[req->header_count].key = strdup(key);
+                if (req->headers[req->header_count].key)
+                    cweb_leak_tracker_record("req.header.key", req->headers[req->header_count].key, strlen(req->headers[req->header_count].key) + 1, true);
+                req->headers[req->header_count].value = strdup(value);
+                if (req->headers[req->header_count].value)
+                    cweb_leak_tracker_record("req.header.value", req->headers[req->header_count].value, strlen(req->headers[req->header_count].value) + 1, true);
+
+                if (strcasecmp(key, "Content-Length") == 0) {
+                    parse_content_length_value(value, &expected_body_len);
+                }
+
+                req->header_count++;
+            }
+        }
+
+        cursor = line_end + 1;
+        if (*(cursor - 1) == '\r' && *cursor == '\n') cursor++;
     }
 
     if (expected_body_len > body_available) {
