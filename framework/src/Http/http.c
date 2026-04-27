@@ -15,12 +15,20 @@
 #include <ctype.h>
 #include <errno.h>
 
-static const char* find_header_end(const char *raw_request, size_t len) {
-    if (!raw_request || len < 4) return NULL;
+static const char* find_header_end(const char *raw_request, size_t len, size_t *separator_len) {
+    if (!raw_request || len < 2) return NULL;
 
     for (size_t i = 0; i + 3 < len; i++) {
         if (raw_request[i] == '\r' && raw_request[i + 1] == '\n' &&
             raw_request[i + 2] == '\r' && raw_request[i + 3] == '\n') {
+            if (separator_len) *separator_len = 4;
+            return raw_request + i;
+        }
+    }
+
+    for (size_t i = 0; i + 1 < len; i++) {
+        if (raw_request[i] == '\n' && raw_request[i + 1] == '\n') {
+            if (separator_len) *separator_len = 2;
             return raw_request + i;
         }
     }
@@ -117,6 +125,7 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
     size_t header_len = 0;
     size_t body_available = 0;
     size_t expected_body_len = 0;
+    size_t separator_len = 0;
     char *buffer = NULL;
     char *saveptr = NULL;
     char *line = NULL;
@@ -124,20 +133,22 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
     if (!req) return NULL;
     cweb_leak_tracker_record("Request", req, sizeof(*req), true);
 
-    header_end = find_header_end(raw_request, len);
+    header_end = find_header_end(raw_request, len, &separator_len);
     if (!header_end) {
+        LOG_DEBUG("HTTP", "Request parse failed: header terminator not found in %zu bytes", len);
         cweb_free_http_request(req);
         return NULL;
     }
 
     header_len = (size_t)(header_end - raw_request);
-    body_available = len - (header_len + 4);
+    body_available = len - (header_len + separator_len);
 
     buffer = malloc(header_len + 1);
     if (buffer) cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, true);
     if (!buffer) {
-        cweb_free_http_request(req);
-        return NULL;
+        LOG_DEBUG("HTTP", "Request parse failed: request line missing");
+        cweb_free_http_request(req); 
+        return NULL; 
     }
     memcpy(buffer, raw_request, header_len);
     buffer[header_len] = '\0';
@@ -185,6 +196,7 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
     }
 
     if (expected_body_len > body_available) {
+        LOG_DEBUG("HTTP", "Request parse failed: expected body_len=%zu but only %zu bytes available", expected_body_len, body_available);
         cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
         free(buffer);
         cweb_free_http_request(req);
@@ -194,13 +206,14 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
     if (expected_body_len > 0) {
         req->body = malloc(expected_body_len + 1);
         if (!req->body) {
+            LOG_DEBUG("HTTP", "Request parse failed: body allocation for %zu bytes failed", expected_body_len);
             cweb_leak_tracker_record("request.buffer", buffer, header_len + 1, false);
             free(buffer);
             cweb_free_http_request(req);
             return NULL;
         }
 
-        memcpy(req->body, header_end + 4, expected_body_len);
+        memcpy(req->body, header_end + separator_len, expected_body_len);
         req->body[expected_body_len] = '\0';
         req->body_len = expected_body_len;
         cweb_leak_tracker_record("req.body", req->body, req->body_len + 1, true);

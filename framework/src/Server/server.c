@@ -19,12 +19,20 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 static void conn_read_cb(struct bufferevent *bev, void *ctx);
 static void conn_event_cb(struct bufferevent *bev, short events, void *ctx);
 
-static const char *find_header_end_in_buffer(const char *data, size_t len) {
-    if (!data || len < 4) return NULL;
+static const char *find_header_end_in_buffer(const char *data, size_t len, size_t *separator_len) {
+    if (!data || len < 2) return NULL;
 
     for (size_t i = 0; i + 3 < len; i++) {
         if (data[i] == '\r' && data[i + 1] == '\n' &&
             data[i + 2] == '\r' && data[i + 3] == '\n') {
+            if (separator_len) *separator_len = 4;
+            return data + i;
+        }
+    }
+
+    for (size_t i = 0; i + 1 < len; i++) {
+        if (data[i] == '\n' && data[i + 1] == '\n') {
+            if (separator_len) *separator_len = 2;
             return data + i;
         }
     }
@@ -172,13 +180,14 @@ static void conn_read_cb(struct bufferevent *bev, void *ctx) {
     size_t header_len = 0;
     size_t body_len = 0;
     size_t request_len = 0;
+    size_t separator_len = 0;
     LOG_DEBUG("SERVER", "Received %zu bytes of data", len);
     if (len == 0) return;
 
     peek = (const char *)evbuffer_pullup(input, (ev_ssize_t)len);
     if (!peek) return;
 
-    header_end = find_header_end_in_buffer(peek, len);
+    header_end = find_header_end_in_buffer(peek, len, &separator_len);
     if (!header_end) {
         LOG_DEBUG("SERVER", "Request headers incomplete, waiting for more data");
         return;
@@ -186,9 +195,9 @@ static void conn_read_cb(struct bufferevent *bev, void *ctx) {
 
     header_len = (size_t)(header_end - peek);
     body_len = get_content_length_from_headers(peek, header_len);
-    request_len = header_len + 4 + body_len;
+    request_len = header_len + separator_len + body_len;
     if (len < request_len) {
-        size_t body_bytes_present = len > (header_len + 4) ? len - (header_len + 4) : 0;
+        size_t body_bytes_present = len > (header_len + separator_len) ? len - (header_len + separator_len) : 0;
         LOG_DEBUG("SERVER", "Request body incomplete (%zu/%zu), waiting for more data", body_bytes_present, body_len);
         return;
     }
