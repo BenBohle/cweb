@@ -156,7 +156,7 @@ static char* get_cookie_value(Request *req, const char* cookie_name) {
 }
 
 Request* cweb_parse_request(const char *raw_request, size_t len) {
-    Request *req = calloc(1, sizeof(Request));
+    Request *req = NULL;
     const char *header_end = NULL;
     const char *header_cursor = NULL;
     const char *header_limit = NULL;
@@ -166,8 +166,11 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
     size_t separator_len = 0;
     size_t line_advance = 0;
     size_t line_len = 0;
+    bool content_length_seen = false;
     char *request_line = NULL;
 
+    if (!raw_request || len == 0) return NULL;
+    req = calloc(1, sizeof(Request));
     if (!req) return NULL;
     cweb_leak_tracker_record("Request", req, sizeof(*req), true);
 
@@ -243,10 +246,30 @@ Request* cweb_parse_request(const char *raw_request, size_t len) {
                 if (req->headers[req->header_count].value)
                     cweb_leak_tracker_record("req.header.value", req->headers[req->header_count].value, strlen(req->headers[req->header_count].value) + 1, true);
 
+                if (!req->headers[req->header_count].key || !req->headers[req->header_count].value) {
+                    req->header_count++;
+                    cweb_free_http_request(req);
+                    return NULL;
+                }
+
                 if (req->headers[req->header_count].key &&
                     req->headers[req->header_count].value &&
                     strcasecmp(req->headers[req->header_count].key, "Content-Length") == 0) {
-                    parse_content_length_value(req->headers[req->header_count].value, &expected_body_len);
+                    size_t parsed_body_len = 0;
+                    if (!parse_content_length_value(req->headers[req->header_count].value, &parsed_body_len)) {
+                        LOG_DEBUG("HTTP", "Request parse failed: invalid Content-Length '%s'", req->headers[req->header_count].value);
+                        req->header_count++;
+                        cweb_free_http_request(req);
+                        return NULL;
+                    }
+                    if (content_length_seen && parsed_body_len != expected_body_len) {
+                        LOG_DEBUG("HTTP", "Request parse failed: conflicting Content-Length headers");
+                        req->header_count++;
+                        cweb_free_http_request(req);
+                        return NULL;
+                    }
+                    expected_body_len = parsed_body_len;
+                    content_length_seen = true;
                 }
 
                 req->header_count++;

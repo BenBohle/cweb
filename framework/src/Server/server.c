@@ -19,29 +19,32 @@ static void listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
 static void conn_read_cb(struct bufferevent *bev, void *ctx);
 static void conn_event_cb(struct bufferevent *bev, short events, void *ctx);
 
-static const char *find_header_end_in_buffer(const char *data, size_t len, size_t *separator_len) {
-    if (!data || len < 2) return NULL;
+static int find_request_header_end(struct evbuffer *input, size_t *header_len, size_t *separator_len) {
+    struct evbuffer_ptr crlf = evbuffer_search(input, "\r\n\r\n", 4, NULL);
+    struct evbuffer_ptr lf = evbuffer_search(input, "\n\n", 2, NULL);
+    ev_ssize_t pos = -1;
 
-    for (size_t i = 0; i + 3 < len; i++) {
-        if (data[i] == '\r' && data[i + 1] == '\n' &&
-            data[i + 2] == '\r' && data[i + 3] == '\n') {
-            if (separator_len) *separator_len = 4;
-            return data + i;
-        }
+    if (crlf.pos >= 0) {
+        pos = crlf.pos;
+        if (separator_len) *separator_len = 4;
     }
 
-    for (size_t i = 0; i + 1 < len; i++) {
-        if (data[i] == '\n' && data[i + 1] == '\n') {
-            if (separator_len) *separator_len = 2;
-            return data + i;
-        }
+    if (lf.pos >= 0 && (pos < 0 || lf.pos < pos)) {
+        pos = lf.pos;
+        if (separator_len) *separator_len = 2;
     }
 
-    return NULL;
+    if (pos < 0) return 0;
+
+    if (header_len) *header_len = (size_t)pos;
+    return 1;
 }
 
-static size_t get_content_length_from_headers(const char *headers, size_t header_len) {
+static int parse_content_length_from_headers(const char *headers, size_t header_len, size_t *body_len) {
     size_t offset = 0;
+    int found = 0;
+
+    if (body_len) *body_len = 0;
 
     while (offset < header_len) {
         const char *line = headers + offset;
@@ -71,23 +74,35 @@ static size_t get_content_length_from_headers(const char *headers, size_t header
             const char *value = line + prefix_len;
             char *endptr = NULL;
             unsigned long long parsed = 0;
+            size_t parsed_size = 0;
 
             while (isspace((unsigned char)*value)) value++;
             errno = 0;
             parsed = strtoull(value, &endptr, 10);
-            if (errno == 0 && endptr != value) {
-                while (isspace((unsigned char)*endptr)) endptr++;
-                if ((size_t)(endptr - line) <= line_len) {
-                    return (size_t)parsed;
-                }
+            if (errno != 0 || endptr == value) return 0;
+
+            while ((size_t)(endptr - line) < line_len && isspace((unsigned char)*endptr)) {
+                endptr++;
             }
+
+            if ((size_t)(endptr - line) != line_len) return 0;
+
+            parsed_size = (size_t)parsed;
+            if ((unsigned long long)parsed_size != parsed) return 0;
+
+            if (found && body_len && *body_len != parsed_size) {
+                return 0;
+            }
+
+            if (body_len) *body_len = parsed_size;
+            found = 1;
         }
 
         if (line_advance == 0) break;
         offset += line_len + line_advance;
     }
 
-    return 0;
+    return 1;
 }
 
 struct event_base *g_event_base = NULL;
@@ -180,26 +195,35 @@ static void conn_read_cb(struct bufferevent *bev, void *ctx) {
 
     struct evbuffer *input = bufferevent_get_input(bev);
     size_t len = evbuffer_get_length(input);
-    const char *peek = NULL;
-    const char *header_end = NULL;
     size_t header_len = 0;
     size_t body_len = 0;
     size_t request_len = 0;
     size_t separator_len = 0;
+    AUTOFREE char *header = NULL;
     LOG_DEBUG("SERVER", "Received %zu bytes of data", len);
     if (len == 0) return;
 
-    peek = (const char *)evbuffer_pullup(input, (ev_ssize_t)len);
-    if (!peek) return;
-
-    header_end = find_header_end_in_buffer(peek, len, &separator_len);
-    if (!header_end) {
+    if (!find_request_header_end(input, &header_len, &separator_len)) {
         LOG_DEBUG("SERVER", "Request headers incomplete, waiting for more data");
         return;
     }
 
-    header_len = (size_t)(header_end - peek);
-    body_len = get_content_length_from_headers(peek, header_len);
+    header = malloc(header_len + 1);
+    if (!header) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return;
+    }
+    if (evbuffer_copyout(input, header, header_len) != (ev_ssize_t)header_len) {
+        LOG_ERROR("SERVER", "Failed to copy request headers");
+        return;
+    }
+    header[header_len] = '\0';
+
+    if (!parse_content_length_from_headers(header, header_len, &body_len)) {
+        LOG_ERROR("SERVER", "Invalid Content-Length header");
+        return;
+    }
+
     request_len = header_len + separator_len + body_len;
     if (len < request_len) {
         size_t body_bytes_present = len > (header_len + separator_len) ? len - (header_len + separator_len) : 0;
